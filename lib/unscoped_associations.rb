@@ -1,12 +1,40 @@
 require 'unscoped_associations/version'
 
+class Module
+  def fallback_alias_method_chain(target, feature)
+    # Strip out punctuation on predicates, bang or writer methods since
+    # e.g. target?_without_feature is not a valid method name.
+    aliased_target, punctuation = target.to_s.sub(/([?!=])$/, ''), $1
+    yield(aliased_target, punctuation) if block_given?
+
+    with_method = "#{aliased_target}_with_#{feature}#{punctuation}"
+    without_method = "#{aliased_target}_without_#{feature}#{punctuation}"
+
+    alias_method without_method, target
+    alias_method target, with_method
+
+    case
+    when public_method_defined?(without_method)
+      public target
+    when protected_method_defined?(without_method)
+      protected target
+    when private_method_defined?(without_method)
+      private target
+    end
+  end
+end
+
 module UnscopedAssociations
   def self.included(base)
     base.extend ClassMethods
     class << base
-      alias_method_chain :belongs_to, :unscoped
-      alias_method_chain :has_many, :unscoped
-      alias_method_chain :has_one, :unscoped
+      self.class_eval do
+        fallback_alias_method_chain :belongs_to, :unscoped
+
+        fallback_alias_method_chain :has_many, :unscoped
+
+        fallback_alias_method_chain :has_one, :unscoped
+      end
     end
   end
 
@@ -22,6 +50,7 @@ module UnscopedAssociations
     def has_one_with_unscoped(name, scope = nil, options = {})
       build_unscoped(:has_one, name, scope, options)
     end
+
 
     private
 
